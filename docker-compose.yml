@@ -1,0 +1,155 @@
+version: '3.3'
+
+services:
+  mysqlserver:
+    image: mysql:latest
+    container_name: ${MYSQL_SERVER_NAME}
+    environment:
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+
+    restart: unless-stopped
+    command: mysqld --character-set-server=utf8 --collation-server=utf8_bin --default-authentication-plugin=mysql_native_password
+    networks:
+      minha-rede:
+        aliases:
+         - mysql-server
+         - zabbix-database
+         - mysql-database
+    
+    volumes:
+      - mysql_database:/var/lib/mysql
+  
+  zabbixsrv:
+    image: zabbix/zabbix-server-mysql:ubuntu-6.0-latest
+    container_name: ${ZABBIX_SERVER_NAME}
+    environment:
+      - DB_SERVER_HOST=${MYSQL_SERVER_NAME}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    
+    restart: unless-stopped    
+    ports:
+      - 10051:10051
+      - 10052:10050
+      
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - zabbix_server_etc:/etc
+
+    ulimits:
+     nproc: 65535
+     nofile:
+      soft: 20000
+      hard: 40000
+    deploy:
+     resources:
+      limits:
+       cpus: '0.70'
+       memory: 1G
+      reservations:
+       cpus: '0.5'
+       memory: 512M
+    
+    networks:
+      minha-rede:
+        aliases:
+         - zabbix-server
+         - zabbix-server-mysql
+         - zabbix-server-ubuntu-mysql
+         - zabbix-server-mysql-ubuntu
+    
+    depends_on:
+      - mysqlserver
+
+  zabbixweb:
+    image: zabbix/zabbix-web-nginx-mysql:ubuntu-6.0-latest
+    container_name: ${ZABBIX_WEB_NAME}
+    environment:
+      - ZBX_SERVER_HOST=${ZABBIX_SERVER_NAME}
+      - DB_SERVER_HOST=${MYSQL_SERVER_NAME}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    
+    restart: unless-stopped
+    ports:
+      - 80:8080
+    
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - zabbix_nginx_etc:/etc
+      - zabbix_nginx_var:/var
+    
+    networks:
+      minha-rede:
+        aliases:
+         - zabbix-web-nginx-mysql
+         - zabbix-web-nginx-ubuntu-mysql
+         - zabbix-web-nginx-mysql-ubuntu 
+    
+    depends_on:
+      - mysqlserver
+  
+  zabbix-agent: 
+    image: zabbix/zabbix-agent:ubuntu-6.0-latest
+    container_name: ${ZABBIX_AGENT_NAME}
+    privileged: true
+    environment:
+      - ZBX_SERVER_HOST=${ZABBIX_SERVER_NAME}
+      - ZBX_HOSTNAME=${ZABBIX_HOSTNAME}
+      - ZBX_ACTIVE_ALLOW=false
+    
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - zabbix_agent_etc:/etc/zabbix:rw
+
+    restart: unless-stopped
+    ports:
+      - 10050:10050
+    
+    networks:
+      minha-rede:
+        aliases:
+         - zabbix-agent
+         - zabbix-agent-passive
+         - zabbix-agent-ubuntu
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    links:
+      - mysqlserver
+      - zabbixsrv
+    ports:
+      - '3000:3000'
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - grafana_data:/var/lib/grafana
+    
+    networks:
+      minha-rede:
+        aliases:
+         - grafana
+         - grafana-server
+         
+    depends_on:
+      - mysqlserver
+      - zabbixsrv
+
+networks: 
+  minha-rede:
+    driver: bridge
+
+volumes:
+  mysql_database:
+  zabbix_server_etc:
+  zabbix_nginx_etc:
+  zabbix_nginx_var:
+  zabbix_agent_etc:
+  grafana_data:
